@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app com valor hora adicional noturno dinâmico", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app corrigida", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -222,7 +222,7 @@ eventos_filtrados = reservas if filtro_mes == "Todos" else [e for e in reservas 
 if menu == "📊 Dashboard & Métricas":
     st.title("📊 Painel de Controle Consolidado")
     
-    ativos = [e for e in eventos_filtrados if e.get("status"] != "Cancelado"]
+    ativos = [e for e in eventos_filtrados if e.get("status") != "Cancelado"]
     total_loc = len(eventos_filtrados)
     conf = sum(1 for e in eventos_filtrados if e.get("status") == "Confirmado")
     pend = sum(1 for e in eventos_filtrados if e.get("status") == "Pendente")
@@ -299,7 +299,6 @@ def render_formulario(ev_atual=None):
 
     st.markdown("---")
     
-    # Dividido em 4 colunas para incluir o Valor Unitário da Hora Noturna de forma dinâmica
     sc1, sc2, sc2_val, sc3 = st.columns(4)
     with sc1:
         salao_val = st.number_input("Valor Locação Base (R$)", value=float(s.get("salao_val", 1200.0)), step=50.0, key=f"sal_v_{suf}")
@@ -312,12 +311,10 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
-    # Cálculo exato do Valor Final do Salão considerando o valor unitário dinâmico da hora
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
 
-    # Caixa de destaque visual com o Valor Final do Salão atualizado em tempo real
     st.metric(
         label="🏷️ Valor Final do Salão (Locação Base - Desconto + Adicional Noturno)", 
         value=f"R$ {valor_final_salao:,.2f}"
