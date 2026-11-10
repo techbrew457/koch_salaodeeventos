@@ -44,7 +44,7 @@ except Exception:
 
 
 # Busca dados na API do GitHub utilizando cache para evitar lentidão
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)  # Reduzido para 1 minuto para evitar travar dados vazios
 def buscar_dados_github_api():
     url = f"https://github.com{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     try:
@@ -79,7 +79,6 @@ def salvar_dados_nuvem(novas_reservas):
         payload["sha"] = sha
         
     res = requests.put(url, headers=HEADERS, json=payload)
-    # Correção definitiva da validação sem operador 'in' para evitar bugs de compilação
     if res.status_code == 200 or res.status_code == 201:
         st.session_state["github_sha"] = res.json()["content"]["sha"]
         st.session_state["reservas"] = novas_reservas
@@ -94,8 +93,10 @@ def formatar_data_br(data_str):
     try:
         if not data_str:
             return ""
-        p = data_str.split("-")
-        return f"{p[2]}/{p[1]}/{p[0]}" if len(p) == 3 else data_str
+        if "-" in data_str:
+            p = data_str.split("-")
+            return f"{p[2]}/{p[1]}/{p[0]}" if len(p) == 3 else data_str
+        return data_str
     except Exception:
         return data_str
 
@@ -243,7 +244,7 @@ reservas = carregar_dados_nuvem()
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v3.2")
+    st.caption("Controle Profissional - v3.3")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
@@ -251,4 +252,3 @@ with st.sidebar:
 
 eventos_filtrados = []
 for e in reservas:
-    data_str = e.get("date", "")
