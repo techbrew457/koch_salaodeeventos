@@ -43,37 +43,46 @@ except Exception:
     st.stop()
 
 
-def carregar_dados_nuvem():
+# Busca dados na API do GitHub utilizando cache para evitar lentidão
+@st.cache_data(ttl=300)
+def buscar_dados_github_api():
     url = f"https://github.com{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     try:
         res = requests.get(url, headers=HEADERS)
         if res.status_code == 200:
             resp_json = res.json()
             dados = json.loads(base64.b64decode(resp_json["content"]).decode("utf-8"))
-            for i, item in enumerate(dados):
-                if not item.get("id"):
-                    item["id"] = f"res-{i}-{str(item.get('cliente', 'sem')).replace(' ', '')}"
-            # Armazena o SHA em cache de sessão para evitar requisições GET redundantes
-            st.session_state["github_sha"] = resp_json["sha"]
-            return dados
+            return dados, resp_json["sha"]
     except Exception:
         pass
-    return []
+    return [], None
 
 
-def salvar_dados_nuvem(reservas):
+def carregar_dados_nuvem():
+    if "reservas" not in st.session_state:
+        dados, sha = buscar_dados_github_api()
+        for i, item in enumerate(dados):
+            if not item.get("id"):
+                item["id"] = f"res-{i}-{str(item.get('cliente', 'sem')).replace(' ', '')}"
+        st.session_state["reservas"] = dados
+        st.session_state["github_sha"] = sha
+    return st.session_state["reservas"]
+
+
+def salvar_dados_nuvem(novas_reservas):
     url = f"https://github.com{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     sha = st.session_state.get("github_sha", None)
     
-    conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
+    conteudo_b64 = base64.b64encode(json.dumps(novas_reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
     payload = {"message": "Sincronização via app - Dados atualizados", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
         
     res = requests.put(url, headers=HEADERS, json=payload)
     if res.status_code in:
-        # Armazena o novo SHA retornado pela API do GitHub para a próxima gravação
         st.session_state["github_sha"] = res.json()["content"]["sha"]
+        st.session_state["reservas"] = novas_reservas
+        st.cache_data.clear()  # Limpa o cache para atualizar as telas na próxima leitura
         return True
     else:
         st.error(f"Erro ao salvar no GitHub: {res.status_code}")
@@ -103,7 +112,7 @@ def calcular_totais(ev):
     
     total_salao = v_salao_liq + v_not_liq
 
-    # Staff / Monitores
+    # Staff
     mon_qtd = float(ev.get("mon_qtd", 0.0))
     mon_val_unit = float(ev.get("mon_val_unit", 200.0))
     mon_desc = float(ev.get("mon_desc", 0.0))
@@ -148,23 +157,21 @@ def calcular_totais(ev):
     subtotal = total_salao + v_mon + v_chopp_cont + v_chopp_cons + v_copos + v_som + v_ret + v_beb + v_ext
     
     total_sinal = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_sinal", []))
-    total_caucao = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_caucao", []))
     total_pendente_pago = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_pendente", []))
     
     val_caucao_estipulado = float(ev.get("valor_caucao_estipulado", 500.0))
     val_sinal_estipulado = float(ev.get("valor_sinal_estipulado", total_salao * 0.5))
     
-    # AJUSTE FINANCEIRO: O cálculo do restante a pagar agora deduz o sinal pago e o saldo já quitado
     restante_a_pagar = max(0.0, subtotal - total_sinal - total_pendente_pago)
     
-    return subtotal, val_sinal_estipulado, total_sinal, val_caucao_estipulado, total_caucao, restante_a_pagar
+    return subtotal, val_sinal_estipulado, total_sinal, val_caucao_estipulado, restante_a_pagar
 
 
 def gerar_documento_word(ev, data_fmt):
     if not os.path.exists("modelo_contrato.docx"):
         return None
     doc = Document("modelo_contrato.docx")
-    subtotal, v_sinal, t_sinal, v_caucao, t_caucao, restante = calcular_totais(ev)
+    subtotal, v_sinal, t_sinal, v_caucao, restante = calcular_totais(ev)
 
     chopps_txt = []
     for b in ev.get("chopp_contratado", []):
@@ -218,9 +225,10 @@ def gerar_documento_word(ev, data_fmt):
     for t in doc.tables:
         for row in t.rows:
             for cell in row.cells:
-                for k, v in ctx.items():
-                    if k in cell.text: 
-                        cell.text = cell.text.replace(k, v)
+                for p in cell.paragraphs:
+                    for k, v in ctx.items():
+                        if k in p.text: 
+                            p.text = p.text.replace(k, v)
 
     io_file = io.BytesIO()
     doc.save(io_file)
@@ -228,21 +236,20 @@ def gerar_documento_word(ev, data_fmt):
     return io_file
 
 
-# Inicialização única do Estado da Sessão (Evita travamentos e loops assíncronos)
-if "reservas" not in st.session_state:
-    st.session_state["reservas"] = carregar_dados_nuvem()
-
-reservas = st.session_state["reservas"]
+# Carrega a base de dados
+reservas = carregar_dados_nuvem()
 
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v2.3")
+    st.caption("Controle Profissional - v3.0")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
     filtro_mes = st.selectbox("Mês de Referência", ["Todos", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"])
 
-# Tratamento contra formatos incorretos de data salvos na nuvem
 eventos_filtrados = []
 for e in reservas:
+    data_str = e.get("date", "")
+    if filtro_mes == "Todos":
+        eventos_filtrados.append(e)
