@@ -237,7 +237,7 @@ reservas = st.session_state["reservas"]
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v2.2")
+    st.caption("Controle Profissional - v2.3")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
