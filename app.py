@@ -74,7 +74,7 @@ def salvar_dados_nuvem(novas_reservas):
     sha = st.session_state.get("github_sha", None)
     
     conteudo_b64 = base64.b64encode(json.dumps(novas_reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app - Dados atualizados", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app - Dados updated", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
         
@@ -82,7 +82,7 @@ def salvar_dados_nuvem(novas_reservas):
     if res.status_code in:
         st.session_state["github_sha"] = res.json()["content"]["sha"]
         st.session_state["reservas"] = novas_reservas
-        st.cache_data.clear()  # Limpa o cache para atualizar as telas na próxima leitura
+        st.cache_data.clear()  # Limpa o cache para forçar atualização das telas
         return True
     else:
         st.error(f"Erro ao salvar no GitHub: {res.status_code}")
@@ -242,7 +242,7 @@ reservas = carregar_dados_nuvem()
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v3.0")
+    st.caption("Controle Profissional - v3.2")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
