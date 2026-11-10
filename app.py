@@ -44,7 +44,7 @@ except Exception:
 
 
 # Busca dados na API do GitHub utilizando cache para evitar lentidão
-@st.cache_data(ttl=60)  # Reduzido para 1 minuto para evitar travar dados vazios
+@st.cache_data(ttl=60)
 def buscar_dados_github_api():
     url = f"https://github.com{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     try:
@@ -244,11 +244,11 @@ reservas = carregar_dados_nuvem()
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v3.3")
+    st.caption("Controle Profissional - v3.4")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
     filtro_mes = st.selectbox("Mês de Referência", ["Todos", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"])
 
+# Correção robusta da filtragem por mês para evitar erros de identação ou listas vazias
 eventos_filtrados = []
-for e in reservas:
