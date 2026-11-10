@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app padronizado com date_input", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com total do salão e horas inteiras", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -75,6 +75,8 @@ def salvar_dados_nuvem(reservas):
 
 def formatar_data_br(data_str):
     try:
+        if not data_str:
+            return ""
         p = data_str.split("-")
         return f"{p[2]}/{p[1]}/{p[0]}" if len(p) == 3 else data_str
     except Exception:
@@ -285,9 +287,8 @@ def render_formulario(ev_atual=None):
     with sc_e1:
         tipo_evento = st.selectbox("Tipo de Evento", TIPOS_EVENTO, index=TIPOS_EVENTO.index(s.get("tipo_evento")) if s.get("tipo_evento") in TIPOS_EVENTO else 0, key=f"tp_ev_{suf}")
         
-        # Calendário interativo para Data do Evento
         dt_default = datetime.strptime(s.get("date", "2026-01-01"), "%Y-%m-%d") if is_edit else datetime.now()
-        data_evento_obj = st.date_input("Data do Evento", value=dt_default, key=f"dt_ev_{suf}")
+        data_evento_obj = st.date_input("Data do Evento (DD-MM-AAAA)", value=dt_default, format="DD/MM/YYYY", key=f"dt_ev_{suf}")
 
     with sc_e2:
         turnos = ["manhã", "tarde", "noite", "madrugada"]
@@ -301,22 +302,30 @@ def render_formulario(ev_atual=None):
         salao_val = st.number_input("Valor Locação Base (R$)", value=float(s.get("salao_val", 1200.0)), step=50.0, key=f"sal_v_{suf}")
         salao_desc = st.number_input("Desconto Salão (R$)", value=float(s.get("salao_desc", 0.0)), step=10.0, key=f"sal_d_{suf}")
     with sc2:
-        h_not_qtd = st.number_input("Horas de Adicional Noturno (Qtd)", min_value=0.0, value=float(s.get("h_not_qtd", 0.0)), step=1.0, key=f"hnot_q_{suf}")
+        # Mudado para step=1 e min_value=0 (números inteiros de horas)
+        h_not_qtd = st.number_input("Horas de Adicional Noturno (Qtd)", min_value=0, value=int(s.get("h_not_qtd", 0)), step=1, key=f"hnot_q_{suf}")
         h_not_desc = st.number_input("Desconto Adicional Noturno (R$)", value=float(s.get("h_not_desc", 0.0)), step=10.0, key=f"hnot_d_{suf}")
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
+
+    # Cálculo em tempo real do Total do Salão para exibição imediata
+    val_salao_liquido = max(0.0, salao_val - salao_desc)
+    val_not_liquido = max(0.0, (float(h_not_qtd) * 200.0) - h_not_desc)
+    total_salao_parcial = val_salao_liquido + val_not_liquido
+    
+    st.info(f"🏛️ **Subtotal do Salão (Locação + Adicional Noturno):** **R$ {total_salao_parcial:,.2f}**")
 
     vc1, vc2, vc3, vc4 = st.columns(4)
     with vc1:
         visita_previa = st.selectbox("Visita Prévia?", ["Não", "Sim"], index=0 if s.get("visita_previa") == "Não" else 1, key=f"vprev_{suf}")
     with vc2:
         dt_vp_default = datetime.strptime(s.get("data_visita_previa"), "%Y-%m-%d") if s.get("data_visita_previa") else datetime.now()
-        data_visita_previa_obj = st.date_input("Data Visita Prévia", value=dt_vp_default, key=f"dt_vprev_{suf}")
+        data_visita_previa_obj = st.date_input("Data Visita Prévia", value=dt_vp_default, format="DD/MM/YYYY", key=f"dt_vprev_{suf}")
     with vc3:
         visita_prep = st.selectbox("Visita para Preparativos?", ["Não", "Sim"], index=0 if s.get("visita_prep") == "Não" else 1, key=f"vprep_p_{suf}")
     with vc4:
         dt_vpr_default = datetime.strptime(s.get("data_visita_prep"), "%Y-%m-%d") if s.get("data_visita_prep") else datetime.now()
-        data_visita_prep_obj = st.date_input("Data Prep", value=dt_vpr_default, key=f"dt_vprep_p_{suf}")
+        data_visita_prep_obj = st.date_input("Data Prep", value=dt_vpr_default, format="DD/MM/YYYY", key=f"dt_vprep_p_{suf}")
 
     st.divider()
     st.subheader("👥 3. Detalhamento de Funcionários (Staff)")
@@ -391,16 +400,12 @@ def render_formulario(ev_atual=None):
         val_caucao_estipulado = st.number_input("Valor Caução Estipulado (R$)", value=float(s.get("valor_caucao_estipulado", 500.0)), key=f"vcaucao_est_{suf}")
 
     st.markdown("##### 💵 Registros de Pagamentos (Sinal, Caução e Saldo)")
-    
-    # Função auxiliar atualizada com st.date_input para as datas de pagamento
     def render_bloco_pagamentos(titulo, chave_lista):
         st.markdown(f"**{titulo}**")
         pagamentos_atuais = s.get(chave_lista, [])
         novos_pags = []
         for i in range(3):
             p_ex = pagamentos_atuais[i] if i < len(pagamentos_atuais) else {"valor": 0.0, "data": "", "metodo": "PIX"}
-            
-            # Conversão segura da data salva para objeto date do st.date_input
             try:
                 dt_p_default = datetime.strptime(p_ex.get("data", ""), "%Y-%m-%d").date()
             except Exception:
@@ -410,7 +415,7 @@ def render_formulario(ev_atual=None):
             with pc1:
                 v = st.number_input(f"Valor {i+1} (R$)", value=float(p_ex.get("valor", 0.0)), key=f"{chave_lista}_v_{i}_{suf}")
             with pc2:
-                dt_obj = st.date_input(f"Data {i+1}", value=dt_p_default, key=f"{chave_lista}_dt_{i}_{suf}")
+                dt_obj = st.date_input(f"Data {i+1}", value=dt_p_default, format="DD/MM/YYYY", key=f"{chave_lista}_dt_{i}_{suf}")
             with pc3:
                 met = st.selectbox(f"Método {i+1}", ["PIX", "débito", "crédito", "dinheiro"], index=["PIX", "débito", "crédito", "dinheiro"].index(p_ex.get("metodo", "PIX")) if p_ex.get("metodo") in ["PIX", "débito", "crédito", "dinheiro"] else 0, key=f"{chave_lista}_m_{i}_{suf}")
             
