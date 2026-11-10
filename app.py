@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app com total do salão e horas inteiras", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com valor hora adicional noturno dinâmico", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -86,7 +86,8 @@ def formatar_data_br(data_str):
 def calcular_totais(ev):
     v_salao = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
     h_not_qtd = float(ev.get("h_not_qtd", 0.0))
-    v_not = max(0.0, (h_not_qtd * 200.0) - float(ev.get("h_not_desc", 0.0)))
+    h_not_val_unit = float(ev.get("h_not_val_unit", 200.0))
+    v_not = max(0.0, (h_not_qtd * h_not_val_unit) - float(ev.get("h_not_desc", 0.0)))
     
     mon_qtd = float(ev.get("mon_qtd", 0.0))
     v_mon = max(0.0, mon_qtd * (280.0 - float(ev.get("mon_desc", 0.0))))
@@ -221,7 +222,7 @@ eventos_filtrados = reservas if filtro_mes == "Todos" else [e for e in reservas 
 if menu == "📊 Dashboard & Métricas":
     st.title("📊 Painel de Controle Consolidado")
     
-    ativos = [e for e in eventos_filtrados if e.get("status") != "Cancelado"]
+    ativos = [e for e in eventos_filtrados if e.get("status"] != "Cancelado"]
     total_loc = len(eventos_filtrados)
     conf = sum(1 for e in eventos_filtrados if e.get("status") == "Confirmado")
     pend = sum(1 for e in eventos_filtrados if e.get("status") == "Pendente")
@@ -297,23 +298,30 @@ def render_formulario(ev_atual=None):
         qtd_pessoas = st.number_input("Quantidade de Pessoas", min_value=1, value=int(s.get("qtd_pessoas", 50)), key=f"qtd_pes_{suf}")
 
     st.markdown("---")
-    sc1, sc2, sc3 = st.columns(3)
+    
+    # Dividido em 4 colunas para incluir o Valor Unitário da Hora Noturna de forma dinâmica
+    sc1, sc2, sc2_val, sc3 = st.columns(4)
     with sc1:
         salao_val = st.number_input("Valor Locação Base (R$)", value=float(s.get("salao_val", 1200.0)), step=50.0, key=f"sal_v_{suf}")
         salao_desc = st.number_input("Desconto Salão (R$)", value=float(s.get("salao_desc", 0.0)), step=10.0, key=f"sal_d_{suf}")
     with sc2:
-        # Mudado para step=1 e min_value=0 (números inteiros de horas)
-        h_not_qtd = st.number_input("Horas de Adicional Noturno (Qtd)", min_value=0, value=int(s.get("h_not_qtd", 0)), step=1, key=f"hnot_q_{suf}")
+        h_not_qtd = st.number_input("Qtd Horas Adicional Noturno", min_value=0, value=int(s.get("h_not_qtd", 0)), step=1, key=f"hnot_q_{suf}")
         h_not_desc = st.number_input("Desconto Adicional Noturno (R$)", value=float(s.get("h_not_desc", 0.0)), step=10.0, key=f"hnot_d_{suf}")
+    with sc2_val:
+        h_not_val_unit = st.number_input("Valor Hora Adicional (R$)", value=float(s.get("h_not_val_unit", 200.0)), step=10.0, key=f"hnot_vu_{suf}")
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
-    # Cálculo em tempo real do Total do Salão para exibição imediata
-    val_salao_liquido = max(0.0, salao_val - salao_desc)
-    val_not_liquido = max(0.0, (float(h_not_qtd) * 200.0) - h_not_desc)
-    total_salao_parcial = val_salao_liquido + val_not_liquido
-    
-    st.info(f"🏛️ **Subtotal do Salão (Locação + Adicional Noturno):** **R$ {total_salao_parcial:,.2f}**")
+    # Cálculo exato do Valor Final do Salão considerando o valor unitário dinâmico da hora
+    val_salao_liq = max(0.0, salao_val - salao_desc)
+    val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
+    valor_final_salao = val_salao_liq + val_not_liq
+
+    # Caixa de destaque visual com o Valor Final do Salão atualizado em tempo real
+    st.metric(
+        label="🏷️ Valor Final do Salão (Locação Base - Desconto + Adicional Noturno)", 
+        value=f"R$ {valor_final_salao:,.2f}"
+    )
 
     vc1, vc2, vc3, vc4 = st.columns(4)
     with vc1:
@@ -439,6 +447,7 @@ def render_formulario(ev_atual=None):
         "qtd_pessoas": int(qtd_pessoas),
         "salao_val": float(salao_val), "salao_desc": float(salao_desc),
         "h_not_qtd": float(h_not_qtd), "h_not_desc": float(h_not_desc),
+        "h_not_val_unit": float(h_not_val_unit),
         "higiene": higiene, "visita_previa": visita_previa, "data_visita_previa": data_visita_previa_obj.strftime("%Y-%m-%d"),
         "visita_prep": visita_prep, "data_visita_prep": data_visita_prep_obj.strftime("%Y-%m-%d"),
         "mon_qtd": float(mon_qtd), "mon_desc": float(mon_desc),
