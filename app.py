@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app com calculo de salao dinamico corrigido", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com horários para visitas", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -84,7 +84,6 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
-    # Cálculo dinâmico integrado ao backend de totais
     v_salao = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
     h_not_qtd = float(ev.get("h_not_qtd", 0.0))
     h_not_val_unit = float(ev.get("h_not_val_unit", 200.0))
@@ -164,12 +163,11 @@ def gerar_documento_word(ev, data_fmt):
     if float(ev.get("copos_qtd", 0)) > 0: opc_txt.append(f"- {ev.get('copos_qtd')} fardos de copos personalizados")
     txt_opc = "\n".join(opc_txt) if opc_txt else "Nenhum opcional."
 
-    # Valor do salão isolado dinâmico para o contrato
-    v_salao_contrato = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
+    v_salao_c = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
     h_not_qtd_c = float(ev.get("h_not_qtd", 0.0))
     h_not_vu_c = float(ev.get("h_not_val_unit", 200.0))
-    v_not_contrato = max(0.0, (h_not_qtd_c * h_not_vu_c) - float(ev.get("h_not_desc", 0.0)))
-    total_salao_contrato = v_salao_contrato + v_not_contrato
+    v_not_c = max(0.0, (h_not_qtd_c * h_not_vu_c) - float(ev.get("h_not_desc", 0.0)))
+    total_salao_c = v_salao_c + v_not_c
 
     ctx = {
         "{{cliente}}": str(ev.get("cliente", "")),
@@ -179,7 +177,7 @@ def gerar_documento_word(ev, data_fmt):
         "{{turno}}": f"{ev.get('turno', '')} (Início: {ev.get('hora_inicio', '10:00')})",
         "{{qtd_pessoas}}": str(ev.get("qtd_pessoas", 50)),
         "{{tipo_evento}}": str(ev.get("tipo_evento", "aniversário")),
-        "{{valor_locacao}}": f"R$ {total_salao_contrato:,.2f}",
+        "{{valor_locacao}}": f"R$ {total_salao_c:,.2f}",
         "{{valor_desconto}}": f"R$ {float(ev.get('salao_desc', 0.0)):,.2f}",
         "{{valor_sinal}}": f"R$ {v_sinal:,.2f}",
         "{{status_sinal}}": "Pago" if t_sinal >= v_sinal else "Pendente",
@@ -302,7 +300,27 @@ def render_formulario(ev_atual=None):
     with sc_e2:
         turnos = ["manhã", "tarde", "noite", "madrugada"]
         turno = st.selectbox("Turno", turnos, index=turnos.index(s.get("turno")) if s.get("turno") in turnos else 2, key=f"turno_{suf}")
-        hora_inicio = st.text_input("Horário de Início (ex: 10:00)", value=s.get("hora_inicio", "10:00"), key=f"hr_ini_{suf}")
+        
+        # --- SELETOR OTIMIZADO DE HORA E MINUTO DO EVENTO ---
+        st.markdown("**Horário de Início do Evento**")
+        hora_salva = s.get("hora_inicio", "10:00")
+        try:
+            h_init, m_init = hora_salva.split(":")
+        except Exception:
+            h_init, m_init = "10", "00"
+
+        lista_horas = [f"{i:02d}" for i in range(24)]
+        lista_minutos = ["00", "15", "30", "45"]
+
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            hora_sel = st.selectbox("Hora", lista_horas, index=lista_horas.index(h_init) if h_init in lista_horas else 10, key=f"hr_sel_{suf}")
+        with col_h2:
+            min_sel = st.selectbox("Minuto", lista_minutos, index=lista_minutos.index(m_init) if m_init in lista_minutos else 0, key=f"min_sel_{suf}")
+        
+        hora_inicio = f"{hora_sel}:{min_sel}"
+        # ----------------------------------------------------
+
         qtd_pessoas = st.number_input("Quantidade de Pessoas", min_value=1, value=int(s.get("qtd_pessoas", 50)), key=f"qtd_pes_{suf}")
 
     st.markdown("---")
@@ -319,7 +337,6 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
-    # Cálculo dinâmico real baseado nos campos digitados na tela
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
@@ -329,17 +346,49 @@ def render_formulario(ev_atual=None):
         value=f"R$ {valor_final_salao:,.2f}"
     )
 
-    vc1, vc2, vc3, vc4 = st.columns(4)
+    # --- VISITA PRÉVIA E PREPARATIVOS COM HORA E MINUTO ---
+    st.markdown("---")
+    vc1, vc2 = st.columns(2)
     with vc1:
         visita_previa = st.selectbox("Visita Prévia?", ["Não", "Sim"], index=0 if s.get("visita_previa") == "Não" else 1, key=f"vprev_{suf}")
-    with vc2:
         dt_vp_default = datetime.strptime(s.get("data_visita_previa"), "%Y-%m-%d") if s.get("data_visita_previa") else datetime.now()
         data_visita_previa_obj = st.date_input("Data Visita Prévia", value=dt_vp_default, format="DD/MM/YYYY", key=f"dt_vprev_{suf}")
-    with vc3:
+        
+        # Horário Visita Prévia
+        st.markdown("**Horário da Visita Prévia**")
+        vp_hora_salva = s.get("hora_visita_previa", "14:00")
+        try:
+            vp_h, vp_m = vp_hora_salva.split(":")
+        except Exception:
+            vp_h, vp_m = "14", "00"
+        
+        vph_col, vpm_col = st.columns(2)
+        with vph_col:
+            vp_h_sel = st.selectbox("Hora (Visita)", lista_horas, index=lista_horas.index(vp_h) if vp_h in lista_horas else 14, key=f"vph_sel_{suf}")
+        with vpm_col:
+            vp_m_sel = st.selectbox("Minuto (Visita)", lista_minutos, index=lista_minutos.index(vp_m) if vp_m in lista_minutos else 0, key=f"vpm_sel_{suf}")
+        hora_visita_previa = f"{vp_h_sel}:{vp_m_sel}"
+
+    with vc2:
         visita_prep = st.selectbox("Visita para Preparativos?", ["Não", "Sim"], index=0 if s.get("visita_prep") == "Não" else 1, key=f"vprep_p_{suf}")
-    with vc4:
         dt_vpr_default = datetime.strptime(s.get("data_visita_prep"), "%Y-%m-%d") if s.get("data_visita_prep") else datetime.now()
         data_visita_prep_obj = st.date_input("Data Prep", value=dt_vpr_default, format="DD/MM/YYYY", key=f"dt_vprep_p_{suf}")
+        
+        # Horário Preparativos
+        st.markdown("**Horário da Preparação**")
+        prep_hora_salva = s.get("hora_visita_prep", "09:00")
+        try:
+            prep_h, prep_m = prep_hora_salva.split(":")
+        except Exception:
+            prep_h, prep_m = "09", "00"
+        
+        preph_col, prepm_col = st.columns(2)
+        with preph_col:
+            prep_h_sel = st.selectbox("Hora (Prep)", lista_horas, index=lista_horas.index(prep_h) if prep_h in lista_horas else 9, key=f"preph_sel_{suf}")
+        with prepm_col:
+            prep_m_sel = st.selectbox("Minuto (Prep)", lista_minutos, index=lista_minutos.index(prep_m) if prep_m in lista_minutos else 0, key=f"prepm_sel_{suf}")
+        hora_visita_prep = f"{prep_h_sel}:{prep_m_sel}"
+    # ----------------------------------------------------
 
     st.divider()
     st.subheader("👥 3. Detalhamento de Funcionários (Staff)")
@@ -454,8 +503,12 @@ def render_formulario(ev_atual=None):
         "salao_val": float(salao_val), "salao_desc": float(salao_desc),
         "h_not_qtd": float(h_not_qtd), "h_not_desc": float(h_not_desc),
         "h_not_val_unit": float(h_not_val_unit),
-        "higiene": higiene, "visita_previa": visita_previa, "data_visita_previa": data_visita_previa_obj.strftime("%Y-%m-%d"),
-        "visita_prep": visita_prep, "data_visita_prep": data_visita_prep_obj.strftime("%Y-%m-%d"),
+        "higiene": higiene, "visita_previa": visita_previa, 
+        "data_visita_previa": data_visita_previa_obj.strftime("%Y-%m-%d"),
+        "hora_visita_previa": hora_visita_previa,
+        "visita_prep": visita_prep, 
+        "data_visita_prep": data_visita_prep_obj.strftime("%Y-%m-%d"),
+        "hora_visita_prep": hora_visita_prep,
         "mon_qtd": float(mon_qtd), "mon_desc": float(mon_desc),
         "chopp_contratado": novo_chopp_cont, "chopp_consignado": novo_chopp_cons,
         "copos_qtd": float(copos_qtd), "copos_desc": float(copos_desc),
@@ -530,7 +583,7 @@ elif menu == "📋 Lista & Gestão":
                     try:
                         dt_vp = datetime.strptime(ev.get("data_visita_previa"), "%Y-%m-%d").date()
                         if hoje == (dt_vp - timedelta(days=1)):
-                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita prévia amanhã!")
+                            st.warning(f"⚠️ **ALERTA DE VÉSPERA:** Visita prévia amanhã às {ev.get('hora_visita_previa', '')}!")
                     except Exception:
                         pass
 
@@ -538,7 +591,7 @@ elif menu == "📋 Lista & Gestão":
                     try:
                         dt_vpr = datetime.strptime(ev.get("data_visita_prep"), "%Y-%m-%d").date()
                         if hoje == (dt_vpr - timedelta(days=1)):
-                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita de preparação amanhã!")
+                            st.warning(f"⚠️ **ALERTA DE VÉSPERA:** Visita de preparação amanhã às {ev.get('hora_visita_prep', '')}!")
                     except Exception:
                         pass
                 # ----------------------------------------
@@ -546,7 +599,7 @@ elif menu == "📋 Lista & Gestão":
                 col_i1, col_i2 = st.columns([3, 1])
                 with col_i1:
                     st.markdown(f"**{emoji} Data: {dt_fmt} - {ev.get('cliente')}**")
-                    st.caption(f"Turno: **{ev.get('turno')}** | Evento: {ev.get('tipo_evento')} | Pessoas: {ev.get('qtd_pessoas')} | Status: **{st_ev}**")
+                    st.caption(f"Turno: **{ev.get('turno')}** (Início: {ev.get('hora_inicio', '10:00')}) | Evento: {ev.get('tipo_evento')} | Pessoas: {ev.get('qtd_pessoas')} | Status: **{st_ev}**")
                     
                     whatsapp = "".join(filter(str.isdigit, ev.get("whatsapp", "")))
                     if whatsapp: st.markdown(f"[💬 Abrir WhatsApp](https://wa.me/55{whatsapp})")
