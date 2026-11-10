@@ -79,7 +79,8 @@ def salvar_dados_nuvem(novas_reservas):
         payload["sha"] = sha
         
     res = requests.put(url, headers=HEADERS, json=payload)
-    if res.status_code in:
+    # Correção definitiva da validação sem operador 'in' para evitar bugs de compilação
+    if res.status_code == 200 or res.status_code == 201:
         st.session_state["github_sha"] = res.json()["content"]["sha"]
         st.session_state["reservas"] = novas_reservas
         st.cache_data.clear()  # Limpa o cache para forçar atualização das telas
@@ -251,5 +252,3 @@ with st.sidebar:
 eventos_filtrados = []
 for e in reservas:
     data_str = e.get("date", "")
-    if filtro_mes == "Todos":
-        eventos_filtrados.append(e)
