@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app com horários para visitas", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app atualizada com sucesso", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -84,11 +84,18 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
-    v_salao = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
+    # Cálculo dinâmico real do salão utilizando as chaves gravadas
+    v_base = float(ev.get("salao_val", 1200.0))
+    v_desc = float(ev.get("salao_desc", 0.0))
+    v_salao = max(0.0, v_base - v_desc)
+    
     h_not_qtd = float(ev.get("h_not_qtd", 0.0))
     h_not_val_unit = float(ev.get("h_not_val_unit", 200.0))
-    v_not = max(0.0, (h_not_qtd * h_not_val_unit) - float(ev.get("h_not_desc", 0.0)))
+    h_not_desc = float(ev.get("h_not_desc", 0.0))
+    v_not = max(0.0, (h_not_qtd * h_not_val_unit) - h_not_desc)
     
+    total_salao = v_salao + v_not
+
     mon_qtd = float(ev.get("mon_qtd", 0.0))
     v_mon = max(0.0, mon_qtd * (280.0 - float(ev.get("mon_desc", 0.0))))
     
@@ -128,14 +135,14 @@ def calcular_totais(ev):
         ed = float(ext.get("desconto", 0.0))
         v_ext += max(0.0, eq * (ep - ed))
 
-    subtotal = v_salao + v_not + v_mon + v_chopp_cont + v_chopp_cons + v_copos + v_som + v_ret + v_beb + v_ext
+    subtotal = total_salao + v_mon + v_chopp_cont + v_chopp_cons + v_copos + v_som + v_ret + v_beb + v_ext
     
     total_sinal = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_sinal", []))
     total_caucao = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_caucao", []))
     total_pendente_pago = sum(float(p.get("valor", 0)) for p in ev.get("pagamentos_pendente", []))
     
     val_caucao_estipulado = float(ev.get("valor_caucao_estipulado", 500.0))
-    val_sinal_estipulado = float(ev.get("valor_sinal_estipulado", v_salao * 0.5))
+    val_sinal_estipulado = float(ev.get("valor_sinal_estipulado", total_salao * 0.5))
     
     restante_a_pagar = max(0.0, subtotal - val_sinal_estipulado - total_pendente_pago)
     
@@ -163,10 +170,13 @@ def gerar_documento_word(ev, data_fmt):
     if float(ev.get("copos_qtd", 0)) > 0: opc_txt.append(f"- {ev.get('copos_qtd')} fardos de copos personalizados")
     txt_opc = "\n".join(opc_txt) if opc_txt else "Nenhum opcional."
 
-    v_salao_c = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
+    v_base_c = float(ev.get("salao_val", 1200.0))
+    v_desc_c = float(ev.get("salao_desc", 0.0))
+    v_salao_c = max(0.0, v_base_c - v_desc_c)
     h_not_qtd_c = float(ev.get("h_not_qtd", 0.0))
     h_not_vu_c = float(ev.get("h_not_val_unit", 200.0))
-    v_not_c = max(0.0, (h_not_qtd_c * h_not_vu_c) - float(ev.get("h_not_desc", 0.0)))
+    h_not_desc_c = float(ev.get("h_not_desc", 0.0))
+    v_not_c = max(0.0, (h_not_qtd_c * h_not_vu_c) - h_not_desc_c)
     total_salao_c = v_salao_c + v_not_c
 
     ctx = {
@@ -178,7 +188,7 @@ def gerar_documento_word(ev, data_fmt):
         "{{qtd_pessoas}}": str(ev.get("qtd_pessoas", 50)),
         "{{tipo_evento}}": str(ev.get("tipo_evento", "aniversário")),
         "{{valor_locacao}}": f"R$ {total_salao_c:,.2f}",
-        "{{valor_desconto}}": f"R$ {float(ev.get('salao_desc', 0.0)):,.2f}",
+        "{{valor_desconto}}": f"R$ {v_desc_c:,.2f}",
         "{{valor_sinal}}": f"R$ {v_sinal:,.2f}",
         "{{status_sinal}}": "Pago" if t_sinal >= v_sinal else "Pendente",
         "{{valor_caucao}}": f"R$ {v_caucao:,.2f}",
@@ -337,6 +347,7 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
+    # Cálculo dinâmico real em tempo real baseado exclusivamente nos campos inseridos
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
@@ -354,7 +365,6 @@ def render_formulario(ev_atual=None):
         dt_vp_default = datetime.strptime(s.get("data_visita_previa"), "%Y-%m-%d") if s.get("data_visita_previa") else datetime.now()
         data_visita_previa_obj = st.date_input("Data Visita Prévia", value=dt_vp_default, format="DD/MM/YYYY", key=f"dt_vprev_{suf}")
         
-        # Horário Visita Prévia
         st.markdown("**Horário da Visita Prévia**")
         vp_hora_salva = s.get("hora_visita_previa", "14:00")
         try:
@@ -374,7 +384,6 @@ def render_formulario(ev_atual=None):
         dt_vpr_default = datetime.strptime(s.get("data_visita_prep"), "%Y-%m-%d") if s.get("data_visita_prep") else datetime.now()
         data_visita_prep_obj = st.date_input("Data Prep", value=dt_vpr_default, format="DD/MM/YYYY", key=f"dt_vprep_p_{suf}")
         
-        # Horário Preparativos
         st.markdown("**Horário da Preparação**")
         prep_hora_salva = s.get("hora_visita_prep", "09:00")
         try:
