@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app corrigida", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com calculo de salao dinamico corrigido", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -84,6 +84,7 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
+    # Cálculo dinâmico integrado ao backend de totais
     v_salao = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
     h_not_qtd = float(ev.get("h_not_qtd", 0.0))
     h_not_val_unit = float(ev.get("h_not_val_unit", 200.0))
@@ -163,6 +164,13 @@ def gerar_documento_word(ev, data_fmt):
     if float(ev.get("copos_qtd", 0)) > 0: opc_txt.append(f"- {ev.get('copos_qtd')} fardos de copos personalizados")
     txt_opc = "\n".join(opc_txt) if opc_txt else "Nenhum opcional."
 
+    # Valor do salão isolado dinâmico para o contrato
+    v_salao_contrato = max(0.0, float(ev.get("salao_val", 1200.0)) - float(ev.get("salao_desc", 0.0)))
+    h_not_qtd_c = float(ev.get("h_not_qtd", 0.0))
+    h_not_vu_c = float(ev.get("h_not_val_unit", 200.0))
+    v_not_contrato = max(0.0, (h_not_qtd_c * h_not_vu_c) - float(ev.get("h_not_desc", 0.0)))
+    total_salao_contrato = v_salao_contrato + v_not_contrato
+
     ctx = {
         "{{cliente}}": str(ev.get("cliente", "")),
         "{{documento}}": str(ev.get("documento", "Não informado")),
@@ -171,7 +179,7 @@ def gerar_documento_word(ev, data_fmt):
         "{{turno}}": f"{ev.get('turno', '')} (Início: {ev.get('hora_inicio', '10:00')})",
         "{{qtd_pessoas}}": str(ev.get("qtd_pessoas", 50)),
         "{{tipo_evento}}": str(ev.get("tipo_evento", "aniversário")),
-        "{{valor_locacao}}": f"R$ {float(ev.get('salao_val', 1200.0)):,.2f}",
+        "{{valor_locacao}}": f"R$ {total_salao_contrato:,.2f}",
         "{{valor_desconto}}": f"R$ {float(ev.get('salao_desc', 0.0)):,.2f}",
         "{{valor_sinal}}": f"R$ {v_sinal:,.2f}",
         "{{status_sinal}}": "Pago" if t_sinal >= v_sinal else "Pendente",
@@ -311,6 +319,7 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
+    # Cálculo dinâmico real baseado nos campos digitados na tela
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
