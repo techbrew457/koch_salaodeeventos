@@ -315,4 +315,242 @@ def render_formulario(ev_atual=None):
     with st1:
         mon_qtd = st.number_input("Qtd de Monitores / Staff", min_value=0.0, value=float(s.get("mon_qtd", 0.0)), step=1.0, key=f"mon_q_{suf}")
     with st2:
-        mon_desc = st.
+        mon_desc = st.number_input("Desconto por Monitor (R$ unitário)", value=float(s.get("mon_desc", 0.0)), step=10.0, key=f"mon_d_{suf}")
+
+    st.divider()
+    st.subheader("🍺 4. Detalhamento de Chopp (Contratado e Consignado)")
+    
+    st.markdown("##### 📌 Chopp Contratado")
+    chopp_cont_data = s.get("chopp_contratado", [])
+    novo_chopp_cont = []
+    cc1, cc2, cc3, cc4 = st.columns(4)
+    estilos_principais = ["Pilsen", "IPA", "APA", "Bohemian", "Golden", "Stout", "Vinho", "Red Ale"]
+    for idx, estilo in enumerate(estilos_principais[:4]):
+        b_exist = next((x for x in chopp_cont_data if x.get("estilo") == estilo), {"qtd": 0, "litros": 30, "preco_base": 330.0 if estilo=="Pilsen" else 360.0, "desconto": 0.0})
+        with [cc1, cc2, cc3, cc4][idx]:
+            st.markdown(f"**{estilo}**")
+            q = st.number_input(f"Qtd Barris ({estilo})", min_value=0, value=int(b_exist.get("qtd", 0)), key=f"cc_q_{estilo}_{suf}")
+            lit = st.selectbox(f"Litros ({estilo})", [30, 50], index=0 if b_exist.get("litros", 30)==30 else 1, key=f"cc_l_{estilo}_{suf}")
+            desc = st.number_input(f"Desc. R$ ({estilo})", value=float(b_exist.get("desconto", 0.0)), key=f"cc_d_{estilo}_{suf}")
+            if q > 0:
+                novo_chopp_cont.append({"estilo": estilo, "qtd": q, "litros": lit, "preco_base": 330.0 if estilo=="Pilsen" else 360.0, "desconto": desc})
+
+    st.markdown("##### 📌 Chopp Consignado (Extra)")
+    chopp_cons_data = s.get("chopp_consignado", [])
+    novo_chopp_cons = []
+    ccon1, ccon2, ccon3, ccon4 = st.columns(4)
+    for idx, estilo in enumerate(estilos_principais[:4]):
+        b_exist = next((x for x in chopp_cons_data if x.get("estilo") == estilo), {"qtd": 0, "litros": 30, "preco_base": 330.0 if estilo=="Pilsen" else 360.0, "desconto": 0.0})
+        with [ccon1, ccon2, ccon3, ccon4][idx]:
+            st.markdown(f"**Consig. {estilo}**")
+            q = st.number_input(f"Qtd Consig. ({estilo})", min_value=0, value=int(b_exist.get("qtd", 0)), key=f"con_q_{estilo}_{suf}")
+            lit = st.selectbox(f"Litros Consig. ({estilo})", [30, 50], index=0 if b_exist.get("litros", 30)==30 else 1, key=f"con_l_{estilo}_{suf}")
+            desc = st.number_input(f"Desc. Consig. R$ ({estilo})", value=float(b_exist.get("desconto", 0.0)), key=f"con_d_{estilo}_{suf}")
+            if q > 0:
+                novo_chopp_cons.append({"estilo": estilo, "qtd": q, "litros": lit, "preco_base": 330.0 if estilo=="Pilsen" else 360.0, "desconto": desc})
+
+    st.divider()
+    st.subheader("🥤 5. Copos, Som, Imagem e Bebidas")
+    cop1, cop2 = st.columns(2)
+    with cop1:
+        copos_qtd = st.number_input("Fardos de Copos (400ml c/ 50un - R$ 20/fardo)", min_value=0.0, value=float(s.get("copos_qtd", 0.0)), key=f"cop_q_{suf}")
+        copos_desc = st.number_input("Desconto por Fardo (R$)", value=float(s.get("copos_desc", 0.0)), key=f"cop_d_{suf}")
+    with cop2:
+        som_qtd = st.number_input("Som (1 = Sim, 0 = Não - R$ 100)", min_value=0.0, max_value=1.0, value=float(s.get("som_qtd", 0.0)), key=f"som_q_{suf}")
+        som_desc = st.number_input("Desconto Som (R$)", value=float(s.get("som_desc", 0.0)), key=f"som_d_{suf}")
+        ret_qtd = st.number_input("Retroprojetor (1 = Sim, 0 = Não - R$ 100)", min_value=0.0, max_value=1.0, value=float(s.get("ret_qtd", 0.0)), key=f"ret_q_{suf}")
+        ret_desc = st.number_input("Desconto Retroprojetor (R$)", value=float(s.get("ret_desc", 0.0)), key=f"ret_d_{suf}")
+
+    st.markdown("##### 💧 Bebidas (Água e Refrigerante / Suco)")
+    beb1, beb2, beb3, beb4 = st.columns(4)
+    bebidas_inputs = {}
+    for i, (b_key, b_label, def_p) in enumerate([("agua_sem", "Água sem gás (R$ 4)", 4.0), ("agua_com", "Água com gás (R$ 4)", 4.0), ("refrilata", "Refrigerante Lata (R$ 10)", 10.0), ("sucolata", "Suco Lata (R$ 10)", 10.0)]):
+        b_val = s.get(b_key, {"qtd": 0, "desc": 0.0})
+        with [beb1, beb2, beb3, beb4][i]:
+            st.markdown(f"**{b_label}**")
+            bq = st.number_input(f"Qtd {b_key}", min_value=0, value=int(b_val.get("qtd", 0)), key=f"bq_{b_key}_{suf}")
+            bd = st.number_input(f"Desc {b_key}", value=float(b_val.get("desc", 0.0)), key=f"bd_{b_key}_{suf}")
+            bebidas_inputs[b_key] = {"qtd": bq, "desc": bd}
+
+    st.divider()
+    st.subheader("💰 6. Detalhamento Financeiro e Pagamentos")
+    
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        val_sinal_estipulado = st.number_input("Valor de Sinal Estipulado (R$)", value=float(s.get("valor_sinal_estipulado", 600.0)), key=f"vsinal_est_{suf}")
+    with fc2:
+        val_caucao_estipulado = st.number_input("Valor Caução Estipulado (R$)", value=float(s.get("valor_caucao_estipulado", 500.0)), key=f"vcaucao_est_{suf}")
+
+    st.markdown("##### 💵 Registros de Pagamentos (Sinal, Caução e Saldo)")
+    def render_bloco_pagamentos(titulo, chave_lista):
+        st.markdown(f"**{titulo}**")
+        pagamentos_atuais = s.get(chave_lista, [])
+        novos_pags = []
+        for i in range(3):
+            p_ex = pagamentos_atuais[i] if i < len(pagamentos_atuais) else {"valor": 0.0, "data": "", "metodo": "PIX"}
+            pc1, pc2, pc3 = st.columns(3)
+            with pc1:
+                v = st.number_input(f"Valor {i+1} (R$)", value=float(p_ex.get("valor", 0.0)), key=f"{chave_lista}_v_{i}_{suf}")
+            with pc2:
+                dt = st.text_input(f"Data {i+1} (DD/MM/AAAA)", value=str(p_ex.get("data", "")), key=f"{chave_lista}_dt_{i}_{suf}")
+            with pc3:
+                met = st.selectbox(f"Método {i+1}", ["PIX", "débito", "crédito", "dinheiro"], index=["PIX", "débito", "crédito", "dinheiro"].index(p_ex.get("metodo", "PIX")) if p_ex.get("metodo") in ["PIX", "débito", "crédito", "dinheiro"] else 0, key=f"{chave_lista}_m_{i}_{suf}")
+            if v > 0:
+                novos_pags.append({"valor": v, "data": dt, "metodo": met})
+        return novos_pags
+
+    pag_sinal = render_bloco_pagamentos("Pagamentos de Sinal", "pagamentos_sinal")
+    pag_caucao = render_bloco_pagamentos("Pagamentos de Caução", "pagamentos_caucao")
+    pag_pendente = render_bloco_pagamentos("Pagamentos de Saldo / Pendente", "pagamentos_pendente")
+
+    st.divider()
+    status = st.selectbox("Status Geral da Reserva", ["Pendente", "Confirmado", "Cancelado"], index=["Pendente", "Confirmado", "Cancelado"].index(s.get("status", "Pendente")), key=f"status_{suf}")
+    observacoes = st.text_area("Observações e Acordos Específicos", value=s.get("observacoes", ""), key=f"obs_{suf}")
+
+    return {
+        "cliente": cliente, "whatsapp": whatsapp, "telefone2": telefone2, "documento": documento, "endereco": endereco,
+        "tipo_evento": tipo_evento,
+        "date": f"{st.session_state.get(f'ano_{suf}', 2026)}-{int(st.session_state.get(f'mes_{suf}', 1)):02d}-{int(st.session_state.get(f'dia_{suf}', 1)):02d}",
+        "turno": st.session_state.get(f'turno_{suf}', turno), "hora_inicio": hora_inicio,
+        "qtd_pessoas": int(st.session_state.get(f'qtd_pes_{suf}', qtd_pessoas)),
+        "salao_val": float(salao_val), "salao_desc": float(salao_desc),
+        "h_not_qtd": float(h_not_qtd), "h_not_desc": float(h_not_desc),
+        "higiene": higiene, "visita_previa": visita_previa, "data_visita_previa": data_visita_previa,
+        "visita_prep": visita_prep, "data_visita_prep": data_visita_prep,
+        "mon_qtd": float(mon_qtd), "mon_desc": float(mon_desc),
+        "chopp_contratado": novo_chopp_cont, "chopp_consignado": novo_chopp_cons,
+        "copos_qtd": float(copos_qtd), "copos_desc": float(copos_desc),
+        "som_qtd": float(som_qtd), "som_desc": float(som_desc),
+        "ret_qtd": float(ret_qtd), "ret_desc": float(ret_desc),
+        "agua_sem": bebidas_inputs["agua_sem"], "agua_com": bebidas_inputs["agua_com"],
+        "refrilata": bebidas_inputs["refrilata"], "sucolata": bebidas_inputs["sucolata"],
+        "extras": [],
+        "valor_sinal_estipulado": float(val_sinal_estipulado), "valor_caucao_estipulado": float(val_caucao_estipulado),
+        "pagamentos_sinal": pag_sinal, "pagamentos_caucao": pag_caucao, "pagamentos_pendente": pag_pendente,
+        "status": status, "observacoes": observacoes
+    }
+
+
+if menu == "➕ Nova Locação":
+    st.title("📝 Registrar Nova Locação (Padrão Ficha)")
+    with st.form("form_nova_locacao", clear_on_submit=True):
+        dados_form = render_formulario()
+        submitted = st.form_submit_button("💾 Salvar Nova Locação na Nuvem")
+        if submitted:
+            if not dados_form["cliente"].strip():
+                st.warning("⚠️ O nome do cliente é obrigatório.")
+            else:
+                try:
+                    datetime.strptime(dados_form["date"], "%Y-%m-%d")
+                    dados_form["id"] = str(int(datetime.now().timestamp()))
+                    reservas.append(dados_form)
+                    if salvar_dados_nuvem(reservas):
+                        st.success("🎉 Locação registrada com sucesso!")
+                        st.rerun()
+                except ValueError:
+                    st.error("⚠️ Data inválida.")
+
+
+# ==========================================
+# 4. LISTA & GESTÃO
+# ==========================================
+elif menu == "📋 Lista & Gestão":
+    st.title("📋 Gerenciamento de Locações")
+
+    if eventos_filtrados:
+        c_f1, c_f2 = st.columns(2)
+        with c_f1: f_status = st.selectbox("Filtrar por Status", ["Todos", "Confirmado", "Pendente", "Cancelado"])
+        with c_f2: f_busca = st.text_input("🔍 Buscar por Cliente", "")
+
+        lista = [e for e in eventos_filtrados if (f_status == "Todos" or e.get("status") == f_status) and (f_busca.lower() in e.get("cliente", "").lower())]
+
+        hoje = datetime.now().date()
+
+        for ev in sorted(lista, key=lambda x: str(x.get("date", ""))):
+            ev_id = ev.get("id")
+            st_ev = ev.get("status", "Pendente")
+            emoji = "✅" if st_ev == "Confirmado" else ("❌" if st_ev == "Cancelado" else "⏳")
+            dt_fmt = formatar_data_br(ev.get("date"))
+            
+            subtotal, v_sinal, t_sinal, v_caucao, t_caucao, restante = calcular_totais(ev)
+
+            with st.container(border=True):
+                # --- ALERTAS OPERACIONAIS E FINANCEIROS ---
+                try:
+                    dt_evento = datetime.strptime(ev.get("date"), "%Y-%m-%d").date()
+                    
+                    if hoje == (dt_evento - timedelta(days=1)):
+                        st.error("🚨 **ALERTA DE VÉSPERA:** Checar salão para data do evento amanhã!")
+                    
+                    if restante > 0 and hoje == (dt_evento - timedelta(days=3)):
+                        st.warning("⚠️ **PAGAMENTO PENDENTE:** Faltam 3 dias para o evento e ainda há valores pendentes a quitar!")
+                except Exception:
+                    pass
+
+                if ev.get("visita_previa") == "Sim" and ev.get("data_visita_previa"):
+                    try:
+                        dt_vp = datetime.strptime(ev.get("data_visita_previa"), "%Y-%m-%d").date()
+                        if hoje == (dt_vp - timedelta(days=1)):
+                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita prévia amanhã!")
+                    except Exception:
+                        pass
+
+                if ev.get("visita_prep") == "Sim" and ev.get("data_visita_prep"):
+                    try:
+                        dt_vpr = datetime.strptime(ev.get("data_visita_prep"), "%Y-%m-%d").date()
+                        if hoje == (dt_vpr - timedelta(days=1)):
+                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita de preparação amanhã!")
+                    except Exception:
+                        pass
+                # ----------------------------------------
+
+                col_i1, col_i2 = st.columns([3, 1])
+                with col_i1:
+                    st.markdown(f"**{emoji} Data: {dt_fmt} - {ev.get('cliente')}**")
+                    st.caption(f"Turno: **{ev.get('turno')}** | Evento: {ev.get('tipo_evento')} | Pessoas: {ev.get('qtd_pessoas')} | Status: **{st_ev}**")
+                    
+                    whatsapp = "".join(filter(str.isdigit, ev.get("whatsapp", "")))
+                    if whatsapp: st.markdown(f"[💬 Abrir WhatsApp](https://wa.me/55{whatsapp})")
+                    
+                    st.markdown(f"💰 **Total Geral:** R$ {subtotal:,.2f} | 💵 **Sinal Pago:** R$ {t_sinal:,.2f} / {v_sinal:,.2f} | 🔴 **Falta Pagar:** **R$ {restante:,.2f}**")
+                    
+                    chopps_resumo = ", ".join([f"{b['qtd']}x {b['litros']}L {b['estilo']}" for b in ev.get("chopp_contratado", [])]) or "Nenhum chopp contratado"
+                    st.text(f"Chopp: {chopps_resumo}")
+
+                with col_i2:
+                    btn_edit = st.button("✏️ Editar", key=f"ed_{ev_id}", use_container_width=True)
+                    btn_docx = st.button("📄 Contrato", key=f"ct_{ev_id}", use_container_width=True)
+                    btn_del = st.button("🗑️ Excluir", key=f"dl_{ev_id}", use_container_width=True)
+
+                if btn_del:
+                    reservas = [r for r in reservas if r.get("id") != ev_id]
+                    if salvar_dados_nuvem(reservas):
+                        st.success("Excluído com sucesso!")
+                        st.rerun()
+
+                if btn_docx:
+                    arq = gerar_documento_word(ev, dt_fmt)
+                    if arq:
+                        st.download_button("📥 Baixar Contrato Word", arq, file_name=f"Contrato_{ev.get('cliente','').replace(' ','_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"dl_doc_{ev_id}")
+                    else:
+                        st.warning("⚠️ Arquivo `modelo_contrato.docx` não encontrado no repositório.")
+
+                if btn_edit:
+                    st.session_state[f"edit_mode_{ev_id}"] = not st.session_state.get(f"edit_mode_{ev_id}", False)
+
+                if st.session_state.get(f"edit_mode_{ev_id}", False):
+                    st.divider()
+                    with st.form(f"form_edit_{ev_id}"):
+                        novos_dados = render_formulario(ev)
+                        if st.form_submit_button("💾 Salvar Alterações"):
+                            if not novos_dados["cliente"].strip():
+                                st.warning("⚠️ O nome do cliente é obrigatório.")
+                            else:
+                                novos_dados["id"] = ev_id
+                                reservas = [novos_dados if r.get("id") == ev_id else r for r in reservas]
+                                if salvar_dados_nuvem(reservas):
+                                    st.session_state[f"edit_mode_{ev_id}"] = False
+                                    st.success("✅ Atualizado com sucesso!")
+                                    st.rerun()
+    else:
+        st.info("Nenhuma locação cadastrada.")
