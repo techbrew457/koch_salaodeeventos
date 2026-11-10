@@ -408,4 +408,168 @@ def render_formulario(ev_atual=None):
 
             pc1, pc2, pc3 = st.columns(3)
             with pc1:
-                v = st.number_input(f
+                v = st.number_input(f"Valor {i+1} (R$)", value=float(p_ex.get("valor", 0.0)), key=f"{chave_lista}_v_{i}_{suf}")
+            with pc2:
+                dt_obj = st.date_input(f"Data {i+1}", value=dt_p_default, key=f"{chave_lista}_dt_{i}_{suf}")
+            with pc3:
+                met = st.selectbox(f"Método {i+1}", ["PIX", "débito", "crédito", "dinheiro"], index=["PIX", "débito", "crédito", "dinheiro"].index(p_ex.get("metodo", "PIX")) if p_ex.get("metodo") in ["PIX", "débito", "crédito", "dinheiro"] else 0, key=f"{chave_lista}_m_{i}_{suf}")
+            
+            if v > 0:
+                novos_pags.append({"valor": v, "data": dt_obj.strftime("%Y-%m-%d"), "metodo": met})
+        return novos_pags
+
+    pag_sinal = render_bloco_pagamentos("Pagamentos de Sinal", "pagamentos_sinal")
+    pag_caucao = render_bloco_pagamentos("Pagamentos de Caução", "pagamentos_caucao")
+    pag_pendente = render_bloco_pagamentos("Pagamentos de Saldo / Pendente", "pagamentos_pendente")
+
+    st.divider()
+    status = st.selectbox("Status Geral da Reserva", ["Pendente", "Confirmado", "Cancelado"], index=["Pendente", "Confirmado", "Cancelado"].index(s.get("status", "Pendente")), key=f"status_{suf}")
+    observacoes = st.text_area("Observações e Acordos Específicos", value=s.get("observacoes", ""), key=f"obs_{suf}")
+
+    return {
+        "cliente": cliente, "whatsapp": whatsapp, "telefone2": telefone2, "documento": documento, "endereco": endereco,
+        "tipo_evento": tipo_evento,
+        "date": data_evento_obj.strftime("%Y-%m-%d"),
+        "turno": turno, "hora_inicio": hora_inicio,
+        "qtd_pessoas": int(qtd_pessoas),
+        "salao_val": float(salao_val), "salao_desc": float(salao_desc),
+        "h_not_qtd": float(h_not_qtd), "h_not_desc": float(h_not_desc),
+        "higiene": higiene, "visita_previa": visita_previa, "data_visita_previa": data_visita_previa_obj.strftime("%Y-%m-%d"),
+        "visita_prep": visita_prep, "data_visita_prep": data_visita_prep_obj.strftime("%Y-%m-%d"),
+        "mon_qtd": float(mon_qtd), "mon_desc": float(mon_desc),
+        "chopp_contratado": novo_chopp_cont, "chopp_consignado": novo_chopp_cons,
+        "copos_qtd": float(copos_qtd), "copos_desc": float(copos_desc),
+        "som_qtd": float(som_qtd), "som_desc": float(som_desc),
+        "ret_qtd": float(ret_qtd), "ret_desc": float(ret_desc),
+        "agua_sem": bebidas_inputs["agua_sem"], "agua_com": bebidas_inputs["agua_com"],
+        "refrilata": bebidas_inputs["refrilata"], "sucolata": bebidas_inputs["sucolata"],
+        "extras": [],
+        "valor_sinal_estipulado": float(val_sinal_estipulado), "valor_caucao_estipulado": float(val_caucao_estipulado),
+        "pagamentos_sinal": pag_sinal, "pagamentos_caucao": pag_caucao, "pagamentos_pendente": pag_pendente,
+        "status": status, "observacoes": observacoes
+    }
+
+
+if menu == "➕ Nova Locação":
+    st.title("📝 Registrar Nova Locação (Padrão Ficha)")
+    with st.form("form_nova_locacao", clear_on_submit=True):
+        dados_form = render_formulario()
+        submitted = st.form_submit_button("💾 Salvar Nova Locação na Nuvem")
+        if submitted:
+            if not dados_form["cliente"].strip():
+                st.warning("⚠️ O nome do cliente é obrigatório.")
+            else:
+                try:
+                    datetime.strptime(dados_form["date"], "%Y-%m-%d")
+                    dados_form["id"] = str(int(datetime.now().timestamp()))
+                    reservas.append(dados_form)
+                    if salvar_dados_nuvem(reservas):
+                        st.success("🎉 Locação registrada com sucesso!")
+                        st.rerun()
+                except ValueError:
+                    st.error("⚠️ Data inválida.")
+
+
+# ==========================================
+# 4. LISTA & GESTÃO
+# ==========================================
+elif menu == "📋 Lista & Gestão":
+    st.title("📋 Gerenciamento de Locações")
+
+    if eventos_filtrados:
+        c_f1, c_f2 = st.columns(2)
+        with c_f1: f_status = st.selectbox("Filtrar por Status", ["Todos", "Confirmado", "Pendente", "Cancelado"])
+        with c_f2: f_busca = st.text_input("🔍 Buscar por Cliente", "")
+
+        lista = [e for e in eventos_filtrados if (f_status == "Todos" or e.get("status") == f_status) and (f_busca.lower() in e.get("cliente", "").lower())]
+
+        hoje = datetime.now().date()
+
+        for ev in sorted(lista, key=lambda x: str(x.get("date", ""))):
+            ev_id = ev.get("id")
+            st_ev = ev.get("status", "Pendente")
+            emoji = "✅" if st_ev == "Confirmado" else ("❌" if st_ev == "Cancelado" else "⏳")
+            dt_fmt = formatar_data_br(ev.get("date"))
+            
+            subtotal, v_sinal, t_sinal, v_caucao, t_caucao, restante = calcular_totais(ev)
+
+            with st.container(border=True):
+                # --- ALERTAS OPERACIONAIS E FINANCEIROS ---
+                try:
+                    dt_evento = datetime.strptime(ev.get("date"), "%Y-%m-%d").date()
+                    
+                    if hoje == (dt_evento - timedelta(days=1)):
+                        st.error("🚨 **ALERTA DE VÉSPERA:** Checar salão para data do evento amanhã!")
+                    
+                    if restante > 0 and hoje == (dt_evento - timedelta(days=3)):
+                        st.warning("⚠️ **PAGAMENTO PENDENTE:** Faltam 3 dias para o evento e ainda há valores pendentes a quitar!")
+                except Exception:
+                    pass
+
+                if ev.get("visita_previa") == "Sim" and ev.get("data_visita_previa"):
+                    try:
+                        dt_vp = datetime.strptime(ev.get("data_visita_previa"), "%Y-%m-%d").date()
+                        if hoje == (dt_vp - timedelta(days=1)):
+                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita prévia amanhã!")
+                    except Exception:
+                        pass
+
+                if ev.get("visita_prep") == "Sim" and ev.get("data_visita_prep"):
+                    try:
+                        dt_vpr = datetime.strptime(ev.get("data_visita_prep"), "%Y-%m-%d").date()
+                        if hoje == (dt_vpr - timedelta(days=1)):
+                            st.warning("⚠️ **ALERTA DE VÉSPERA:** Checar salão para visita de preparação amanhã!")
+                    except Exception:
+                        pass
+                # ----------------------------------------
+
+                col_i1, col_i2 = st.columns([3, 1])
+                with col_i1:
+                    st.markdown(f"**{emoji} Data: {dt_fmt} - {ev.get('cliente')}**")
+                    st.caption(f"Turno: **{ev.get('turno')}** | Evento: {ev.get('tipo_evento')} | Pessoas: {ev.get('qtd_pessoas')} | Status: **{st_ev}**")
+                    
+                    whatsapp = "".join(filter(str.isdigit, ev.get("whatsapp", "")))
+                    if whatsapp: st.markdown(f"[💬 Abrir WhatsApp](https://wa.me/55{whatsapp})")
+                    
+                    st.markdown(f"💰 **Total Geral:** R$ {subtotal:,.2f} | 💵 **Sinal Pago:** R$ {t_sinal:,.2f} / {v_sinal:,.2f} | 🔴 **Falta Pagar:** **R$ {restante:,.2f}**")
+                    
+                    chopps_resumo = ", ".join([f"{b['qtd']}x {b['litros']}L {b['estilo']}" for b in ev.get("chopp_contratado", [])]) or "Nenhum chopp contratado"
+                    st.text(f"Chopp: {chopps_resumo}")
+
+                with col_i2:
+                    btn_edit = st.button("✏️ Editar", key=f"ed_{ev_id}", use_container_width=True)
+                    btn_docx = st.button("📄 Contrato", key=f"ct_{ev_id}", use_container_width=True)
+                    btn_del = st.button("🗑️ Excluir", key=f"dl_{ev_id}", use_container_width=True)
+
+                if btn_del:
+                    reservas = [r for r in reservas if r.get("id") != ev_id]
+                    if salvar_dados_nuvem(reservas):
+                        st.success("Excluído com sucesso!")
+                        st.rerun()
+
+                if btn_docx:
+                    arq = gerar_documento_word(ev, dt_fmt)
+                    if arq:
+                        st.download_button("📥 Baixar Contrato Word", arq, file_name=f"Contrato_{ev.get('cliente','').replace(' ','_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"dl_doc_{ev_id}")
+                    else:
+                        st.warning("⚠️ Arquivo `modelo_contrato.docx` não encontrado no repositório.")
+
+                if btn_edit:
+                    st.session_state[f"edit_mode_{ev_id}"] = not st.session_state.get(f"edit_mode_{ev_id}", False)
+
+                if st.session_state.get(f"edit_mode_{ev_id}", False):
+                    st.divider()
+                    with st.form(f"form_edit_{ev_id}"):
+                        novos_dados = render_formulario(ev)
+                        if st.form_submit_button("💾 Salvar Alterações"):
+                            if not novos_dados["cliente"].strip():
+                                st.warning("⚠️ O nome do cliente é obrigatório.")
+                            else:
+                                novos_dados["id"] = ev_id
+                                reservas = [novos_dados if r.get("id") == ev_id else r for r in reservas]
+                                if salvar_dados_nuvem(reservas):
+                                    st.session_state[f"edit_mode_{ev_id}"] = False
+                                    st.success("✅ Atualizado com sucesso!")
+                                    st.rerun()
+    else:
+        st.info("Nenhuma locação cadastrada.")
