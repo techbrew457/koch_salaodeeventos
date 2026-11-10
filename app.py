@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app atualizada com sucesso", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com calculo exato de salao", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -84,17 +84,17 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
-    # Cálculo dinâmico real do salão utilizando as chaves gravadas
+    # Fórmula estrita solicitada: (Locação Base - Desconto Salão) + (Qtd Horas Adicional Noturno * Valor Hora Adicional - Desconto Adicional Noturno)
     v_base = float(ev.get("salao_val", 1200.0))
     v_desc = float(ev.get("salao_desc", 0.0))
-    v_salao = max(0.0, v_base - v_desc)
+    v_salao_liq = max(0.0, v_base - v_desc)
     
     h_not_qtd = float(ev.get("h_not_qtd", 0.0))
     h_not_val_unit = float(ev.get("h_not_val_unit", 200.0))
     h_not_desc = float(ev.get("h_not_desc", 0.0))
-    v_not = max(0.0, (h_not_qtd * h_not_val_unit) - h_not_desc)
+    v_not_liq = max(0.0, (h_not_qtd * h_not_val_unit) - h_not_desc)
     
-    total_salao = v_salao + v_not
+    total_salao = v_salao_liq + v_not_liq
 
     mon_qtd = float(ev.get("mon_qtd", 0.0))
     v_mon = max(0.0, mon_qtd * (280.0 - float(ev.get("mon_desc", 0.0))))
@@ -347,7 +347,7 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
-    # Cálculo dinâmico real em tempo real baseado exclusivamente nos campos inseridos
+    # Cálculo dinâmico rigoroso com a fórmula solicitada em tempo real
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
