@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app corrigido", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app seções reorganizadas", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -265,15 +265,24 @@ def render_formulario(ev_atual=None):
     s = ev_atual or {}
     suf = s.get('id', 'new')
 
-    st.subheader("👤 1. Dados do Cliente e Evento")
+    # SEÇÃO 1: APENAS DADOS DO CLIENTE
+    st.subheader("👤 1. Dados do Cliente")
     col1, col2 = st.columns(2)
     with col1:
         cliente = st.text_input("Nome do Cliente *", value=s.get("cliente", ""), key=f"cli_{suf}")
         whatsapp = st.text_input("WhatsApp", value=s.get("whatsapp", ""), key=f"wpp_{suf}")
         telefone2 = st.text_input("Telefone 02", value=s.get("telefone2", ""), key=f"tel2_{suf}")
+    with col2:
         documento = st.text_input("CPF / CNPJ", value=s.get("documento", ""), key=f"doc_{suf}")
         endereco = st.text_input("Endereço", value=s.get("endereco", ""), key=f"end_{suf}")
-    with col2:
+
+    st.divider()
+
+    # SEÇÃO 2: DADOS DO SALÃO E EVENTO
+    st.subheader("🏛️ 2. Detalhamento do Salão e do Evento")
+    
+    sc_e1, sc_e2 = st.columns(2)
+    with sc_e1:
         tipo_evento = st.selectbox("Tipo de Evento", TIPOS_EVENTO, index=TIPOS_EVENTO.index(s.get("tipo_evento")) if s.get("tipo_evento") in TIPOS_EVENTO else 0, key=f"tp_ev_{suf}")
         
         dt_base = datetime.strptime(s.get("date", "2026-01-01"), "%Y-%m-%d") if is_edit else datetime.now()
@@ -282,13 +291,13 @@ def render_formulario(ev_atual=None):
         with d2: mes = st.selectbox("Mês", list(range(1, 13)), index=dt_base.month - 1, format_func=lambda x: f"{x:02d}", key=f"mes_{suf}")
         with d3: ano = st.selectbox("Ano", [2025, 2026, 2027, 2028], index=[2025, 2026, 2027, 2028].index(dt_base.year) if dt_base.year in [2025, 2026, 2027, 2028] else 1, key=f"ano_{suf}")
 
+    with sc_e2:
         turnos = ["manhã", "tarde", "noite", "madrugada"]
         turno = st.selectbox("Turno", turnos, index=turnos.index(s.get("turno")) if s.get("turno") in turnos else 2, key=f"turno_{suf}")
         hora_inicio = st.text_input("Horário de Início (ex: 10:00)", value=s.get("hora_inicio", "10:00"), key=f"hr_ini_{suf}")
         qtd_pessoas = st.number_input("Quantidade de Pessoas", min_value=1, value=int(s.get("qtd_pessoas", 50)), key=f"qtd_pes_{suf}")
 
-    st.divider()
-    st.subheader("🏛️ 2. Detalhamento do Salão, Adicionais e Visitas")
+    st.markdown("---")
     sc1, sc2, sc3 = st.columns(3)
     with sc1:
         salao_val = st.number_input("Valor Locação Base (R$)", value=float(s.get("salao_val", 1200.0)), step=50.0, key=f"sal_v_{suf}")
