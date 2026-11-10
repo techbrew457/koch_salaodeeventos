@@ -53,6 +53,7 @@ def carregar_dados_nuvem():
             for i, item in enumerate(dados):
                 if not item.get("id"):
                     item["id"] = f"res-{i}-{str(item.get('cliente', 'sem')).replace(' ', '')}"
+            # Armazena o SHA em cache de sessão para evitar requisições GET redundantes
             st.session_state["github_sha"] = resp_json["sha"]
             return dados
     except Exception:
@@ -71,6 +72,7 @@ def salvar_dados_nuvem(reservas):
         
     res = requests.put(url, headers=HEADERS, json=payload)
     if res.status_code in:
+        # Armazena o novo SHA retornado pela API do GitHub para a próxima gravação
         st.session_state["github_sha"] = res.json()["content"]["sha"]
         return True
     else:
@@ -89,6 +91,7 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
+    # Salão
     v_base = float(ev.get("salao_val", 1200.0))
     v_desc = float(ev.get("salao_desc", 0.0))
     v_salao_liq = max(0.0, v_base - v_desc)
@@ -100,6 +103,7 @@ def calcular_totais(ev):
     
     total_salao = v_salao_liq + v_not_liq
 
+    # Staff / Monitores
     mon_qtd = float(ev.get("mon_qtd", 0.0))
     mon_val_unit = float(ev.get("mon_val_unit", 200.0))
     mon_desc = float(ev.get("mon_desc", 0.0))
@@ -150,6 +154,7 @@ def calcular_totais(ev):
     val_caucao_estipulado = float(ev.get("valor_caucao_estipulado", 500.0))
     val_sinal_estipulado = float(ev.get("valor_sinal_estipulado", total_salao * 0.5))
     
+    # AJUSTE FINANCEIRO: O cálculo do restante a pagar agora deduz o sinal pago e o saldo já quitado
     restante_a_pagar = max(0.0, subtotal - total_sinal - total_pendente_pago)
     
     return subtotal, val_sinal_estipulado, total_sinal, val_caucao_estipulado, total_caucao, restante_a_pagar
@@ -223,30 +228,21 @@ def gerar_documento_word(ev, data_fmt):
     return io_file
 
 
+# Inicialização única do Estado da Sessão (Evita travamentos e loops assíncronos)
 if "reservas" not in st.session_state:
     st.session_state["reservas"] = carregar_dados_nuvem()
 
 reservas = st.session_state["reservas"]
 
+# --- MENU LATERAL ---
 with st.sidebar:
     st.title("🍺 Koch Gestão")
-    st.caption("Controle Profissional - v2.1")
+    st.caption("Controle Profissional - v2.2")
     st.divider()
     menu = st.radio("Navegação", ["📊 Dashboard & Métricas", "📅 Calendário Geral", "➕ Nova Locação", "📋 Lista & Gestão"])
     st.divider()
     filtro_mes = st.selectbox("Mês de Referência", ["Todos", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"])
 
+# Tratamento contra formatos incorretos de data salvos na nuvem
 eventos_filtrados = []
 for e in reservas:
-    data_str = e.get("date", "")
-    if filtro_mes == "Todos":
-        eventos_filtrados.append(e)
-    elif data_str and len(data_str.split("-")) >= 2 and data_str.split("-")[1] == filtro_mes:
-        eventos_filtrados.append(e)
-
-
-if menu == "📊 Dashboard & Métricas":
-    st.title("📊 Painel de Controle Consolidado")
-    
-    ativos = [e for e in eventos_filtrados if e.get("status") != "Cancelado"]
-    total_loc = len(eventos_filtrados)
