@@ -63,7 +63,7 @@ def salvar_dados_nuvem(reservas):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ARQUIVO_DADOS}"
     _, sha = carregar_dados_nuvem()
     conteudo_b64 = base64.b64encode(json.dumps(reservas, ensure_ascii=False, indent=4).encode("utf-8")).decode("utf-8")
-    payload = {"message": "Sincronização via app com calculo exato de salao", "content": conteudo_b64}
+    payload = {"message": "Sincronização via app com valor unitario de staff atualizado", "content": conteudo_b64}
     if sha:
         payload["sha"] = sha
     res = requests.put(url, headers=HEADERS, json=payload)
@@ -84,7 +84,7 @@ def formatar_data_br(data_str):
 
 
 def calcular_totais(ev):
-    # Fórmula estrita solicitada: (Locação Base - Desconto Salão) + (Qtd Horas Adicional Noturno * Valor Hora Adicional - Desconto Adicional Noturno)
+    # Salão
     v_base = float(ev.get("salao_val", 1200.0))
     v_desc = float(ev.get("salao_desc", 0.0))
     v_salao_liq = max(0.0, v_base - v_desc)
@@ -96,8 +96,11 @@ def calcular_totais(ev):
     
     total_salao = v_salao_liq + v_not_liq
 
+    # Staff / Monitores (com valor unitário dinâmico)
     mon_qtd = float(ev.get("mon_qtd", 0.0))
-    v_mon = max(0.0, mon_qtd * (280.0 - float(ev.get("mon_desc", 0.0))))
+    mon_val_unit = float(ev.get("mon_val_unit", 200.0))
+    mon_desc = float(ev.get("mon_desc", 0.0))
+    v_mon = max(0.0, mon_qtd * (mon_val_unit - mon_desc))
     
     v_chopp_cont = 0.0
     for b in ev.get("chopp_contratado", []):
@@ -347,7 +350,7 @@ def render_formulario(ev_atual=None):
     with sc3:
         higiene = st.selectbox("Produtos de Higiene e Limpeza", ["Tech", "Cliente"], index=0 if s.get("higiene") == "Tech" else 1, key=f"hig_{suf}")
 
-    # Cálculo dinâmico rigoroso com a fórmula solicitada em tempo real
+    # Cálculo dinâmico rigoroso do valor final do salão
     val_salao_liq = max(0.0, salao_val - salao_desc)
     val_not_liq = max(0.0, (float(h_not_qtd) * h_not_val_unit) - h_not_desc)
     valor_final_salao = val_salao_liq + val_not_liq
@@ -401,11 +404,13 @@ def render_formulario(ev_atual=None):
 
     st.divider()
     st.subheader("👥 3. Detalhamento de Funcionários (Staff)")
-    st1, st2 = st.columns(2)
+    st1, st2, st3 = st.columns(3)
     with st1:
         mon_qtd = st.number_input("Qtd de Monitores / Staff", min_value=0.0, value=float(s.get("mon_qtd", 0.0)), step=1.0, key=f"mon_q_{suf}")
     with st2:
-        mon_desc = st.number_input("Desconto por Monitor (R$ unitário)", value=float(s.get("mon_desc", 0.0)), step=10.0, key=f"mon_d_{suf}")
+        mon_val_unit = st.number_input("Valor Unitário Staff (R$)", value=float(s.get("mon_val_unit", 200.0)), step=10.0, key=f"mon_vu_{suf}")
+    with st3:
+        mon_desc = st.number_input("Desconto por Staff (R$ unitário)", value=float(s.get("mon_desc", 0.0)), step=10.0, key=f"mon_d_{suf}")
 
     st.divider()
     st.subheader("🍺 4. Detalhamento de Chopp (Contratado e Consignado)")
@@ -518,7 +523,9 @@ def render_formulario(ev_atual=None):
         "visita_prep": visita_prep, 
         "data_visita_prep": data_visita_prep_obj.strftime("%Y-%m-%d"),
         "hora_visita_prep": hora_visita_prep,
-        "mon_qtd": float(mon_qtd), "mon_desc": float(mon_desc),
+        "mon_qtd": float(mon_qtd), 
+        "mon_val_unit": float(mon_val_unit), 
+        "mon_desc": float(mon_desc),
         "chopp_contratado": novo_chopp_cont, "chopp_consignado": novo_chopp_cons,
         "copos_qtd": float(copos_qtd), "copos_desc": float(copos_desc),
         "som_qtd": float(som_qtd), "som_desc": float(som_desc),
